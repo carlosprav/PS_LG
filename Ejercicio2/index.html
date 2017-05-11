@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <title>Ejercicio 2</title>
+
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+
+    <script src="http://code.jquery.com/jquery-3.2.1.js" integrity="sha256-DZAnKJ/6XZ9si04Hgrsxu/8s717jcIzLy3oi35EouyE=" crossorigin="anonymous"></script>
+
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+
+
+</head>
+
+<body>
+    <div id="container"></div>
+
+    <script type="text/javascript">
+        $(function() {
+            var totalData = [],
+                series = [];
+
+
+            //Obtiene Serie 1
+            jQuery.ajax({
+                url: 'http://s3.amazonaws.com/logtrust-static/test/test/data1.json',
+                type: 'GET',
+                data: {},
+                dataType: 'JSON',
+                success: function(data) {
+                    iterateS1(data);
+                },
+                error: function() {
+                    $('#div').html('<p>Cannot reach the data from AWS S3.</p>');
+                }
+            })
+
+            //Obtiene Serie 2
+            jQuery.ajax({
+                url: 'http://s3.amazonaws.com/logtrust-static/test/test/data2.json',
+                type: 'GET',
+                data: {},
+                dataType: 'JSON',
+                success: function(data) {
+                    iterateS2(data);
+                },
+                error: function() {
+                    $('#div').html('<p>Cannot reach the data from AWS S3.</p>');
+                }
+            })
+
+            //Obtiene Serie 3
+            jQuery.ajax({
+                url: 'http://s3.amazonaws.com/logtrust-static/test/test/data3.json',
+                type: 'GET',
+                data: {},
+                dataType: 'JSON',
+                success: function(data) {
+                    iterateS3(data);
+                    //Al terminar de iterar las tres series pinta las gráficas
+                    plotGraph();
+                },
+                error: function() {
+                    $('#div').html('<p>Cannot reach the data from AWS S3.</p>');
+                }
+            })
+
+            //Eficiencia mejorada con varias funciones iteradoras en lugar de una global
+            //Funcion iteradora S1
+            function iterateS1(data) {
+                $.each(data, function() {
+                    var normalD = new Date(this.d);
+                    var categoryUp = this.cat.toUpperCase();
+                    var valueC = this.value;
+                    constructTotalData(new Date(this.d), categoryUp, valueC);
+                });
+            }
+
+            //Funcion iteradora S2
+            function iterateS2(data) {
+                $.each(data, function() {
+                    var normalD = new Date(this.myDate);
+                    var categoryUp = this.categ.toUpperCase();
+                    var valueC = this.val;
+                    constructTotalData(new Date(this.myDate), categoryUp, valueC);
+                });
+            }
+
+            //Funcion iteradora S3
+            function iterateS3(data) {
+                $.each(data, function() {
+                    var raw = this.raw;
+                    var normalDate = raw.match(/\d{4}-\d{2}-\d{2}/g);
+                    //Localiza por #
+                    var categoryUp = raw.match(/#[a-zA-Z0-9 ]*#/g).toString();
+                    //Localiza por CAT
+                    var categ = categoryUp.match(/CAT [\d]*/g).toString();
+                    var valueC = this.val;
+                    constructTotalData(new Date(normalDate), categ.toUpperCase(), valueC);
+                });
+            }
+
+            //Construye el array de objetos para las graficas
+            function constructTotalData(dateC, categoryC, valueC) {
+                var len = totalData.length;
+                if (len != 0) {
+                    for (var i = 0; i < len; i++) {
+                        var obj = totalData[i];
+                        if (obj.x.getUTCDate() == dateC.getUTCDate() && obj.x.getUTCMonth() == dateC.getUTCMonth() && obj.z == categoryC) {
+                            totalData[i].y = totalData[i].y + valueC;
+                            break;
+                        } else if (i == len - 1) {
+                            totalData[len] = {
+                                x: dateC,
+                                y: valueC,
+                                z: categoryC
+                            };
+                        }
+                    }
+                } else {
+                    totalData[0] = {
+                        x: dateC,
+                        y: valueC,
+                        z: categoryC
+                    };
+                }
+            }
+
+            //Funcion para imprimir las graficas
+            function plotGraph() {
+                series = generateData(totalData);
+                data2 = getQuantityByCat(totalData);
+
+                //Funcion para ordenar los datos por fecha y disponerlos para la grafica 1
+                function generateData(array) {
+                    var names = [];
+                    var len = array.length;
+                    array.sort(function(obj1, obj2) {
+                        var date1 = new Date(obj1.x);
+                        var date2 = new Date(obj2.x);
+                        if (date1 < date2) return -1;
+                        else if (date1 > date2) return 1;
+                        else return 0;
+                    });
+
+                    for (i = 0; i < len; i++) {
+                        var obj = array[i];
+                        var pos = $.inArray(obj.z, names);
+                        if (pos < 0) {
+                            pos = names.push(obj.z) - 1;
+                            series.push({
+                                name: obj.z,
+                                data: []
+                            });
+                        }
+                        series[pos].data.push(obj);
+                    }
+                    return series;
+                }
+
+                //Funcion para contar los datos para la grafica 2
+                function getQuantityByCat(array) {
+                    var data2 = [];
+                    var names = [];
+                    len = array.length;
+                    for (i = 0; i < len; i++) {
+                        var obj = array[i],
+                            pos = $.inArray(obj.z, names);
+                        if (pos < 0) {
+                            pos = names.push(obj.z) - 1;
+                            data2.push({
+                                name: obj.z,
+                                y: 0
+                            });
+                        }
+                        data2[pos].y = (data2[pos].y + obj.y);
+                    }
+                    return data2;
+                }
+
+                //Grafica de lineas 
+                $('#graph1').highcharts({
+                    title: {
+                        text: 'Ejercicio 2 Grafica 1'
+                    },
+
+                    subtitle: {
+                        text: 'Test'
+                    },
+
+                    xAxis: {
+                        type: 'datetime',
+                        dateTimeLabelFormats: {
+                            month: '%e. %b',
+                            year: '%b'
+                        },
+                        title: {
+                            text: 'Date'
+                        }
+                    },
+                    tooltip: {
+                        headerFormat: '<b>{series.name}</b><br>',
+                        pointFormat: '{point.x:%e. %b}: {point.y:.2f} valor'
+                    },
+
+                    legend: {
+                        layout: 'vertical',
+                        align: 'right',
+                        verticalAlign: 'middle'
+                    },
+                    series: series
+                });
+
+                //Grafica de tarta
+                $('#graph2').highcharts({
+                    chart: {
+                        plotBackgroundColor: null,
+                        plotBorderWidth: null,
+                        plotShadow: false,
+                        type: 'pie'
+                    },
+                    title: {
+                        text: 'Ejercicio 2 Grafica 2'
+                    },
+                    tooltip: {
+                        pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b>'
+                    },
+                    plotOptions: {
+                        pie: {
+                            allowPointSelect: true,
+                            cursor: 'pointer',
+                            dataLabels: {
+                                enabled: true,
+                                format: '<b>{point.name}</b>: {point.percentage:.1f} %',
+                                style: {
+                                    color: (Highcharts.theme && Highcharts.theme.contrastTextColor) || 'black'
+                                }
+                            }
+                        }
+                    },
+                    series: [{
+                        data: data2
+                    }]
+
+                });
+            };
+        });
+
+    </script>
+
+    <div id="graph1" class="chart"></div>
+    <div class="spacer"></div>
+    <div id="graph2" class="chart"></div>
+
+</body>
+
+</html>
